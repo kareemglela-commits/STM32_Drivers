@@ -1,53 +1,28 @@
-#ifndef _RCC_REGISTER_H
-#define _RCC_REGISTER_H
+#ifndef _UART_REGISTER_H
+#define _UART_REGISTER_H
 
-#define RCC_BASE_ADDRESS 0x40023800
-
+#define USART1_BASE_ADDRESS         0x40011000U
+#define USART2_BASE_ADDRESS         0x40004400U
+#define USART3_BASE_ADDRESS         0x40004800U
+#define UART4_BASE_ADDRESS          0x40004C00U
+#define UART5_BASE_ADDRESS          0x40005000U
+#define USART6_BASE_ADDRESS         0x40011400U
 typedef struct {
-	volatile uint32_t RCC_CR;
-	volatile uint32_t RCC_PLLCFGR;
-	volatile uint32_t RCC_CFGR;
-	volatile uint32_t RCC_CIR;
-	volatile uint32_t RCC_AHB1RSTR;
-	volatile uint32_t RCC_AHB2RSTR;
-	volatile uint32_t RCC_AHB3RSTR;
-	volatile uint32_t Reserved_0;
-	volatile uint32_t RCC_APB1RSTR;
-	volatile uint32_t RCC_APB2RSTR;
-	volatile uint32_t Reserved_1[2];
-	
-	volatile uint32_t RCC_AHB1ENR;
-	volatile uint32_t RCC_AHB2ENR;
-	volatile uint32_t RCC_AHB3ENR;
-	
-	volatile uint32_t Reserved_2;
-	
-	volatile uint32_t RCC_APB1ENR;
-	volatile uint32_t RCC_APB2ENR;
-	
-	volatile uint32_t Reserved_3[2];
-	
-	volatile	uint32_t RCC_AHB1LPENR;
-	volatile	uint32_t RCC_AHB2LPENR;
-	volatile	uint32_t RCC_AHB3LPENR;
-	volatile	uint32_t Reserved_4;
-		
-	volatile	uint32_t RCC_APB1LPENR;
-	volatile	uint32_t RCC_APB2LPENR;
-	
-	volatile	uint32_t Reserved_5[2];
-	volatile	uint32_t RCC_BDCR;
-	volatile	uint32_t RCC_CSR;
-	volatile	uint32_t Reserved_6[2];
-	volatile	uint32_t RCC_SSCGR;
-	volatile	uint32_t RCC_PLLI2SCFGR;
-	volatile	uint32_t RCC_PLLSAICFGR;
-	volatile	uint32_t RCC_DCKCFGR;
-	volatile	uint32_t RCC_CKGATENR;
-	volatile	uint32_t RCC_DCKCFGR2;
-}RCC_RegDef_t;
+	volatile uint32_t SR  ;
+	volatile uint32_t DR  ;
+	volatile uint32_t BRR ;
+	volatile uint32_t CR1 ;
+	volatile uint32_t CR2 ;
+	volatile uint32_t CR3 ;
+	volatile uint32_t GTPR;
+}USART_RegDef_t;
 
 
-#define RCC ((RCC_RegDef_t*)(RCC_BASE_ADDRESS))
+#define USART1 ((USART_RegDef_t*)(USART1_BASE_ADDRESS))
+#define USART2 ((USART_RegDef_t*)(USART2_BASE_ADDRESS))
+#define USART3 ((USART_RegDef_t*)(USART3_BASE_ADDRESS))
+#define UART4  ((USART_RegDef_t*)(UART4_BASE_ADDRESS))
+#define UART5  ((USART_RegDef_t*)(UART5_BASE_ADDRESS))
+#define USART6 ((USART_RegDef_t*)(USART6_BASE_ADDRESS))
 
 #endif /*_RCC_REGISTER_H*/
