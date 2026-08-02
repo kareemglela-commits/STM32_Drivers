@@ -1,26 +1,46 @@
 #include "stdint.h"
+#include "stdio.h"
 #include "UART/UART_Register.h"
 #include "UART/UART_interface.h"
 #include "UART/UART_config.h"
 
+
+#define USART_TX_BUFFER_SIZE 1024
+#define USART_RX_BUFFER_SIZE 128
+#define MAX_USART_COUNT      3  // Adjust for actual usage (e.g., USART1/2/3)
+typedef struct {
+    USART_RegDef_t* USARTx;
+
+    volatile uint8_t TxBuffer[USART_TX_BUFFER_SIZE];
+    volatile uint16_t TxHead;
+    volatile uint16_t TxTail;
+    volatile uint8_t TxBusy;
+
+    volatile uint8_t RxBuffer[USART_RX_BUFFER_SIZE];
+    volatile uint16_t RxHead;
+    volatile uint16_t RxTail;
+} USART_Handler_t;
+
+static USART_Handler_t USART_Handlers[MAX_USART_COUNT];
+static USART_Handler_t* GetUSARTHandler(USART_RegDef_t* USARTx) {
+    for (int i = 0; i < MAX_USART_COUNT; i++) {
+        if (USART_Handlers[i].USARTx == USARTx)
+            return &USART_Handlers[i];
+    }
+    return NULL;
+}
+
+
 void (*ptr_fun[6])(uint8_t)={0};
-uint32_t RCC_GetPCLK1(void) {
 
-    return 16000000;
-}
-
-uint32_t RCC_GetPCLK2(void) {
-
-    return 16000000;
-}
 
 void UART_Init(const USART_Config_t* config) {
     // Enable USART2 clock also pin definition
     USART_RegDef_t* USARTx = config->USART_Instance;
 	uint64_t PCLK = 0; // Assume APB1 = 16MHz
 
-	if (USARTx == USART1 || USARTx == USART6)  PCLK = RCC_GetPCLK2();                   // USART1 is on APB2
-	else if (USARTx == USART2 || USARTx == USART3|| USARTx == UART4|| USARTx == UART5)  PCLK = RCC_GetPCLK1();              // USART2 is on APB1
+	if (USARTx == USART1 || USARTx == USART6)  PCLK = 16000000;                   // USART1 is on APB2
+	else if (USARTx == USART2 || USARTx == USART3|| USARTx == UART4|| USARTx == UART5)  PCLK = 16000000;              // USART2 is on APB1
 
     uint32_t USART_DIV =0;
     uint16_t DIV_Mantissa =0;
@@ -93,11 +113,11 @@ uint32_t USART_ReceiveData_word(USART_RegDef_t* USARTx, uint8_t* buffer, uint16_
     uint32_t UART_time;
 
     // Wait for the FIRST byte, but bounded by a timeout instead of forever
-    UART_time = 5000000;   // tune this - large enough to cover realistic wait
+    UART_time = 500000;   // tune this - large enough to cover realistic wait
     while (!(USARTx->SR & USART_SR_RXNE) && UART_time > 0) UART_time--;
     if (UART_time == 0)
     {
-        return 0;   // nothing received at all -> timeout, no message
+        return local_u32Counter;   // nothing received at all -> timeout, no message
     }
     buffer[local_u32Counter++] = USARTx->DR;
 
@@ -135,3 +155,167 @@ uint32_t USART_ReceiveData_word(USART_RegDef_t* USARTx, uint8_t* buffer, uint16_
 }
 
 */
+
+void UART_Init_IT(const USART_Config_t* config) {
+	UART_Init(config);
+	USART_RegDef_t* USARTx = config->USART_Instance;
+	USARTx->CR1 |= USART_RXNE_INTERRUPT_ENABLE;
+	USARTx->CR1 |= USART_TXE_INTERRUPT_ENABLE;
+}
+void USART_RegisterHandler(USART_RegDef_t* USARTx)// before Initalization ( Enable also the Vector NVIC )
+{
+    for (int i = 0; i < MAX_USART_COUNT; i++) {
+        if (USART_Handlers[i].USARTx == NULL) {
+            USART_Handlers[i].USARTx = USARTx;
+            USART_Handlers[i].TxHead = USART_Handlers[i].TxTail = 0;
+            USART_Handlers[i].RxHead = USART_Handlers[i].RxTail = 0;
+            USART_Handlers[i].TxBusy = 0;
+            return;
+        }
+    }
+}
+
+void USART_SendData_IT(USART_RegDef_t* USARTx, uint8_t* data, uint16_t len) {
+    USART_Handler_t* handler = GetUSARTHandler(USARTx);
+    if (!handler || len == 0) return;
+
+    for (uint16_t i = 0; i < len; i++) {
+        uint16_t nextHead = (handler->TxHead + 1) % USART_TX_BUFFER_SIZE;
+        if (nextHead == handler->TxTail)
+            return; // Buffer full, drop or wait
+        handler->TxBuffer[handler->TxHead] = data[i];
+        handler->TxHead = nextHead;
+    }
+
+    // If not already transmitting, kick off the TXE interrupt
+    if (!handler->TxBusy) {
+        handler->TxBusy = 1;
+        USARTx->CR1 |= USART_TXE_INTERRUPT_ENABLE;
+    }
+}
+
+void USART_Read_IT(USART_RegDef_t* USARTx, uint8_t* data) {
+    USART_Handler_t* handler = GetUSARTHandler(USARTx);
+    if (!handler || handler->RxHead == handler->RxTail)
+        return ;
+
+    *data = handler->RxBuffer[handler->RxTail];
+    handler->RxTail = (handler->RxTail + 1) % USART_RX_BUFFER_SIZE;
+    return ;
+}
+
+void USART2_IRQHandler(void) // USED  for  Transmit Data Register Empty interrupt
+{
+    USART_Handler_t* handler = GetUSARTHandler(USART2);
+    if (!handler) return;
+
+    // Transmit Data Register Empty
+    if ((USART2->SR & USART_SR_TXE) && (USART2->CR1 & USART_TXE_INTERRUPT_ENABLE)) {
+        if (handler->TxTail != handler->TxHead) {
+            USART2->DR = handler->TxBuffer[handler->TxTail];
+            handler->TxTail = (handler->TxTail + 1) % USART_TX_BUFFER_SIZE;
+        } else {
+            // Buffer empty, disable TXE interrupt
+            USART2->CR1 &= ~USART_TXE_INTERRUPT_ENABLE;
+            handler->TxBusy = 0;
+        }
+    }
+    // ... handle RXNE, etc.
+}
+/*
+void USART2_IRQHandler(void) {
+    USART_Handler_t* handler = GetUSARTHandler(USART2);
+    if (!handler) return;
+
+    // TXE: Transmit data register empty
+    if ((USART2->SR & USART_SR_TXE) && (USART2->CR1 & USART_TXE_INTERRUPT_ENABLE)) {
+        if (handler->TxHead != handler->TxTail) {
+            USART2->DR = handler->TxBuffer[handler->TxTail];
+            handler->TxTail = (handler->TxTail + 1) % USART_TX_BUFFER_SIZE;
+        } else {
+            USART2->CR1 &= ~USART_TXE_INTERRUPT_ENABLE; // Disable TXE interrupt
+            handler->TxBusy = 0;
+        }
+    }
+
+    // RXNE: Receive data register not empty
+    if (USART2->SR & USART_SR_RXNE) {
+        uint16_t nextHead = (handler->RxHead + 1) % USART_RX_BUFFER_SIZE;
+        if (nextHead != handler->RxTail) { // Avoid overflow
+        	uint8_t received = USART2->DR;
+        	handler->RxBuffer[handler->RxHead] = received;
+        	handler->RxHead = nextHead;
+
+        	if (ptr_fun[1]) {
+        	    ptr_fun[1](received);
+        	}
+
+        } else {
+            volatile uint8_t dummy = USART2->DR; // Drop data
+        }
+    }
+}
+*/
+void USART3_IRQHandler(void) {
+    USART_Handler_t* handler = GetUSARTHandler(USART3);
+    if (!handler) return;
+
+    // TXE: Transmit data register empty
+    if ((USART3->SR & USART_SR_TXE) && (USART3->CR1 & USART_TXE_INTERRUPT_ENABLE)) {
+        if (handler->TxHead != handler->TxTail) {
+            USART3->DR = handler->TxBuffer[handler->TxTail];
+            handler->TxTail = (handler->TxTail + 1) % USART_TX_BUFFER_SIZE;
+        } else {
+            USART3->CR1 &= ~USART_TXE_INTERRUPT_ENABLE; // Disable TXE interrupt
+            handler->TxBusy = 0;
+        }
+    }
+
+    // RXNE: Receive data register not empty
+    if (USART3->SR & USART_SR_RXNE) {
+        uint16_t nextHead = (handler->RxHead + 1) % USART_RX_BUFFER_SIZE;
+        if (nextHead != handler->RxTail) { // Avoid overflow
+        	uint8_t received = USART3->DR;
+        	        	handler->RxBuffer[handler->RxHead] = received;
+        	        	handler->RxHead = nextHead;
+
+        	        	if (ptr_fun[2]) {
+        	        	    ptr_fun[2](received);
+        	        	}
+        } else {
+            volatile uint8_t dummy = USART3->DR; // Drop data
+        }
+    }
+}
+
+void USART1_IRQHandler(void) {
+    USART_Handler_t* handler = GetUSARTHandler(USART1);
+    if (!handler) return;
+
+    // TXE: Transmit data register empty
+    if ((USART1->SR & USART_SR_TXE) && (USART1->CR1 & USART_TXE_INTERRUPT_ENABLE)) {
+        if (handler->TxHead != handler->TxTail) {
+            USART1->DR = handler->TxBuffer[handler->TxTail];
+            handler->TxTail = (handler->TxTail + 1) % USART_TX_BUFFER_SIZE;
+        } else {
+            USART1->CR1 &= ~USART_TXE_INTERRUPT_ENABLE; // Disable TXE interrupt
+            handler->TxBusy = 0;
+        }
+    }
+
+    // RXNE: Receive data register not empty
+    if (USART1->SR & USART_SR_RXNE) {
+        uint16_t nextHead = (handler->RxHead + 1) % USART_RX_BUFFER_SIZE;
+        if (nextHead != handler->RxTail) { // Avoid overflow
+        	uint8_t received = USART1->DR;
+        	        	handler->RxBuffer[handler->RxHead] = received;
+        	        	handler->RxHead = nextHead;
+
+        	        	if (ptr_fun[0]) {
+        	        	    ptr_fun[0](received);
+        	        	}
+        } else {
+            volatile uint8_t dummy = USART1->DR; // Drop data
+        }
+    }
+}

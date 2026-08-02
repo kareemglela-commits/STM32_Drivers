@@ -29,17 +29,6 @@
 #define USART_CR3_DMAR   (1 << 6)   // DMA enable receiver
 #define USART_CR3_DMAT   (1 << 7)   // DMA enable transmitter
 
-/*
-#define USART_PARITY_NONE 0
-#define USART_PARITY_EVEN 1
-#define USART_PARITY_ODD  2
-
-
-#define USART_HW_NONE      0
-#define USART_HW_RTS       1
-#define USART_HW_CTS       2
-#define USART_HW_RTS_CTS   3
-*/
 #define USART_MODE_RX      (1 << 2)
 #define USART_MODE_TX      (1 << 3)
 #define USART_MODE_RX_TX   ((1 << 2) | (1 << 3))
@@ -76,10 +65,11 @@ void UART_Init(const USART_Config_t* config);
 void USART_SendData(USART_RegDef_t* USARTx, uint8_t* data, uint16_t len);
 uint32_t USART_ReceiveData(USART_RegDef_t* USARTx, uint8_t* buffer, uint16_t len);
 uint32_t USART_ReceiveData_word(USART_RegDef_t* USARTx, uint8_t* buffer, uint16_t len);
+
 void UART_Init_IT(const USART_Config_t* config);
-void USART_RegisterHandler(USART_RegDef_t* USARTx) ;
+void USART_RegisterHandler(USART_RegDef_t* USARTx) ; // before Initalization ( Enable also the Vector NVIC )
 void USART_SendData_IT(USART_RegDef_t* USARTx, uint8_t* data, uint16_t len);
-uint32_t USART_ReadByte(USART_RegDef_t* USARTx, uint8_t* data);
+void USART_Read_IT(USART_RegDef_t* USARTx, uint8_t* data);
 
 
 void USART_Init_DMA(const USART_Config_t* config);
